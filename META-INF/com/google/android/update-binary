@@ -1,0 +1,240 @@
+#!/sbin/sh
+###FeraLab###
+ps | grep zygote | grep -v grep >/dev/null && BOOTMODE=true || BOOTMODE=false;
+$BOOTMODE || ps -A 2>/dev/null | grep zygote | grep -v grep >/dev/null && BOOTMODE=true;
+TMPDIR=/dev/tmp;
+INSTALLER=$TMPDIR/install;
+MAGISKBIN=/data/adb/magisk;
+OUTFD=$2
+ZIP=$3
+set -o pipefail;
+umask 022;
+rm -rf $TMPDIR 2>/dev/null;
+mkdir -p $INSTALLER;
+ui_print() {
+  $BOOTMODE && echo "$1" || echo -e "ui_print $1\nui_print" >> /proc/self/fd/$OUTFD
+}
+require_new_magisk() {
+  ui_print "*******************************";
+  ui_print " Please install Magisk v18.1+! ";
+  ui_print "*******************************";
+  exit 1;
+}
+if [ -e /sys/fs/selinux/enforce ]; then
+ chmod 666 /sys/fs/selinux/enforce;
+ setenforce 0;
+ echo "0" > /sys/fs/selinux/enforce;
+ chmod 640 /sys/fs/selinux/enforce;
+ chmod 440 /sys/fs/selinux/policy;
+fi;
+mount -o rw,remount /;
+mount -o rw,remount /data;
+mount -o rw,remount /cache;
+mount /;
+mount /data;
+mount /cache;
+mount /data 2>/dev/null;
+ui_print "  ";
+ui_print "  ";
+ui_print "  ";
+ui_print "  ";
+ui_print "  ";
+ui_print "  ";
+ui_print "  ";
+ui_print "  ";
+ui_print "  ";
+ui_print "*******************************";
+ui_print "         ***Viel-Lab***";
+ui_print "   FDE.AI by VieleytaZen  2020";
+ui_print "*******************************";
+ui_print "FDE.AI deploy...";
+ui_print ".";
+if [ -d /data/adb/magisk ]; then
+ [ -f $MAGISKBIN/util_functions.sh ] || require_new_magisk;
+ . $MAGISKBIN/util_functions.sh;
+ $BOOTMODE && IMG=/data/adb/magisk_merge.img;
+ MOUNTPATH=$TMPDIR/magisk_img;
+ setup_flashable;
+ mount_partitions > /dev/null 2>&1;
+ api_level_arch_detect;
+ $BOOTMODE && boot_actions || recovery_actions;
+ ui_print "..";
+ unzip -o "$ZIP" module.prop install.sh -d $INSTALLER > /dev/null 2>&1;
+ . $INSTALLER/install.sh;
+ MIN_VER="18000";
+ MODID="FDE";
+ MODPATH=$MOUNTPATH/$MODID;
+ request_zip_size_check "$ZIP";
+ mount_magisk_img > /dev/null 2>&1;
+ rm -rf $MODPATH;
+ mkdir -p $MODPATH;
+ ui_print "...";
+ unzip -o "$ZIP" 'system/*' -d $MODPATH > /dev/null 2>&1;
+ rm -f $MODPATH/system/placeholder;
+ for TARGET in $REPLACE; do
+  mktouch $MODPATH$TARGET/.replace;
+ done;
+ $AUTOMOUNT && touch $MODPATH/auto_mount;
+ $PROPFILE;
+ cp -af $INSTALLER/uninstall.sh $MODPATH/uninstall.sh
+ cp -af $INSTALLER/module.prop $MODPATH/module.prop;
+ if $BOOTMODE; then
+  mktouch /sbin/.core/img/$MODID/update;
+  cp -af $INSTALLER/module.prop /sbin/.core/img/$MODID/module.prop;
+ fi;
+ ui_print "....";
+ $LATESTARTSERVICE;
+ touch $MODPATH/fde;
+ chmod 777 $MODPATH/fde;
+ {
+  echo "#!/system/bin/sh"
+  echo " "
+  echo "echo alive"
+  echo " "
+ } >> $MODPATH/fde;
+ ASS=$($MODPATH/fde | grep alive);
+ if [ "$A" != "alive" ]; then
+  rm -rf $MODPATH;
+  ui_print "- Your custom kernel blocks this module. Please get a better kernel.";
+  exit 0;
+ else
+  rm -rf $MODPATH/fde
+  rm -rf $MODPATH/ai.png
+  rm -rf $MODPATH/anti-theft.jpg
+  rm -rf $MODPATH/gplay.png
+  rm -rf $MODPATH/gplay.png
+  ui_print "- Thanks for choosing FDE.AI!"
+ fi;
+ {
+  echo "#!/system/bin/sh"
+  echo "   "
+  echo "/system/etc/fde.ai/r.bin &"
+  echo "   "
+ } >> $MODPATH/service.sh;
+ chmod 777 $MODPATH/service.sh;
+ set_permissions;
+ magisk --restorecon;
+ ui_print ".....";
+ sleep 1;
+ unmount_magisk_img  > /dev/null 2>&1;
+ umount /$MOUNTPATH  > /dev/null 2>&1;
+ $BOOTMODE || recovery_cleanup;
+ rm -rf $TMPDIR;
+else
+ mount -o rw /system;
+ mount -o rw,remount /system;
+ mount /system;
+ if [ -d /system/engine ]; then
+  rm -Rf /system/engine;
+  rm -f /system/etc/fde;
+  rm -Rf /system/etc/init.d_fde_backup;
+  rm -f /system/xbin/fde;
+  rm -f /system/su.d/90fde.sh;
+  rm -f /system/etc/init.d/90fde;
+  rm -f /sdcard/Android/FDE_log.txt;
+  rm -f /sdcard/Android/FDE_config.txt;
+  rm -f /data/media/0/Android/FDE_config.txt;
+  rm -f /data/media/0/Android/FDE_log.txt;
+ fi;
+ rm -Rf /system/fde.ai;
+ rm -Rf /system/etc/fde.ai;
+ rm -Rf /system/engine;
+ rm -f /system/etc/sysctl.conf;
+ ui_print "..";
+ unzip -o "$ZIP";
+ ui_print "...";
+ export PATH=/sbin:/system/sbin:/system/bin:/system/xbin:/system/vendor/bin:/su/xbin;
+ if [ -e /data/su.img ]; then
+  mknod /dev/block/loop7 b 7 7;
+  losetup /dev/block/loop7 /data/su.img;
+  if [ ! -d /tmp ]; then
+   mkdir /tmp;
+  fi;
+  mount -t ext4 -o loop,noatime /dev/block/loop7 /tmp;
+ fi;
+ chmod -R 777 /system/etc/fde.ai;
+ chmod 777 /system/etc/fde.ai/*;
+ sleep 1;
+ ui_print "....";
+ if [ -e /init.supersu.rc ]; then
+  if [ ! -d /system/su.d ]; then
+  mkdir /system/su.d;
+  chmod 777 /system/su.d;
+  fi;
+ fi;
+ if [ -d /tmp/su.d ]; then
+  rm /tmp/su.d/99fde.sh;
+  touch /tmp/su.d/99fde.sh;
+  chmod 777 /tmp/su.d/99fde.sh;
+  {
+  echo "#!/system/bin/sh"
+  echo "   "
+  echo "/system/etc/fde.ai/r.bin &"
+  echo "   "
+  } >> /tmp/su.d/99fde.sh;
+  umount /tmp;
+ elif [ -d /su/su.d ]; then
+  rm /su/su.d/99fde.sh;
+  touch /su/su.d/99fde.sh;
+  chmod 777 /su/su.d/99fde.sh;
+  {
+  echo "#!/system/bin/sh"
+  echo "   "
+  echo "/system/etc/fde.ai/r.bin &"
+  echo "   "
+  } >> /su/su.d/99fde.sh;
+ elif [ -d /system/su.d ]; then
+  rm /system/su.d/99fde.sh;
+  touch /system/su.d/99fde.sh;
+  chmod 777 /system/su.d/99fde.sh;
+  {
+  echo "#!/system/bin/sh"
+  echo "   "
+  echo "/system/etc/fde.ai/r.bin &"
+  echo "   "
+  } >> /system/su.d/99fde.sh;
+ elif [ -d /system/etc/init.d ]; then
+  if [ ! -d /system/etc/init.d_bak ]; then
+   mv /system/etc/init.d /system/etc/init.d_bak;
+   mkdir /system/etc/init.d;
+   chmod 777 /system/etc/init.d;
+  fi;
+  rm /system/etc/init.d/99fde;
+  rm /system/etc/init.d/99fde.sh;
+  touch /system/etc/init.d/99fde;
+  chmod 777 /system/etc/init.d/99fde;
+  {
+  echo "#!/system/bin/sh"
+  echo "   "
+  echo "/system/etc/fde.ai/r.bin &"
+  echo "   "
+  } >> /system/etc/init.d/99fde;
+ elif [ -e /system/bin/debuggerd ]; then
+  if [ ! -e /system/bin/debuggerd_real ]; then
+   mv /system/bin/debuggerd /system/bin/debuggerd_real;
+   touch /system/bin/debuggerd;
+   chmod 755 /system/bin/debuggerd;
+   {
+  echo "#!/system/bin/sh"
+  echo "   "
+  echo "/system/etc/fde.ai/r.bin &"
+  echo "/system/bin/debuggerd_real;"
+  echo "   "
+   } >> /system/bin/debuggerd;
+  fi;
+ fi;
+ ui_print ".....";
+ sleep 1;
+ umount /system;
+fi;
+umount /data;
+umount /cache;
+ui_print "......";
+ui_print "Ready.";
+ui_print " ";
+ui_print " ";
+ui_print " ";
+sleep 1;
+exit 0
+
+
